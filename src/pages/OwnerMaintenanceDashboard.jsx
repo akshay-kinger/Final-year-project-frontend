@@ -22,6 +22,8 @@ import {
   FaEdit,
   FaEye,
   FaSort,
+  FaThumbsUp,
+  FaThumbsDown,
 } from "react-icons/fa";
 import { useAlert } from "../context/AlertContext";
 import { API_ROUTES } from "../api/apiRoutes";
@@ -142,6 +144,8 @@ const HISTORY_COLORS = {
   proof_submitted: "bg-violet-100 text-violet-600",
   proof_rejected: "bg-red-100 text-red-600",
   tenant_hired_technician: "bg-teal-100 text-teal-600",
+  tenant_confirmed_done: "bg-emerald-100 text-emerald-600",
+  tenant_reopened: "bg-orange-100 text-orange-600",
 };
 const HISTORY_ICONS = {
   created: "✦",
@@ -152,6 +156,8 @@ const HISTORY_ICONS = {
   rejected: "✕",
   proof_rejected: "✕",
   helper_declined: "✕",
+  tenant_confirmed_done: "✓",
+  tenant_reopened: "↩",
 };
 
 const fmt = (d) =>
@@ -209,6 +215,47 @@ const PriorityBadge = ({ priority }) => {
 };
 
 // ─────────────────────────────────────────────
+// TenantConfirmationBadge  ← NEW
+// Shows on the owner dashboard what the tenant said about the work
+// ─────────────────────────────────────────────
+const TenantConfirmationBadge = ({ confirmation }) => {
+  if (!confirmation?.verdict) return null;
+  const isDone = confirmation.verdict === "done";
+  return (
+    <div
+      className={`rounded-2xl border px-4 py-3 flex items-start gap-3 ${isDone ? "bg-emerald-50 border-emerald-100" : "bg-orange-50 border-orange-100"}`}
+    >
+      <div
+        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isDone ? "bg-emerald-100" : "bg-orange-100"}`}
+      >
+        {isDone ? (
+          <FaThumbsUp className="text-emerald-600" size={12} />
+        ) : (
+          <FaThumbsDown className="text-orange-500" size={12} />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p
+          className={`text-xs font-black ${isDone ? "text-emerald-700" : "text-orange-700"}`}
+        >
+          {isDone
+            ? "Tenant confirmed work is done"
+            : "Tenant says issue is NOT fixed"}
+        </p>
+        {confirmation.note && (
+          <p className="text-[11px] text-gray-500 mt-0.5">
+            {confirmation.note}
+          </p>
+        )}
+        <p className="text-[10px] text-gray-400 mt-1">
+          {fmtTime(confirmation.confirmedAt)}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────
 // StatsBar
 // ─────────────────────────────────────────────
 const StatsBar = ({ requests }) => {
@@ -224,6 +271,10 @@ const StatsBar = ({ requests }) => {
   ).length;
   const resolved = requests.filter((r) =>
     ["resolved", "closed"].includes(r.status),
+  ).length;
+  // Tenant flagged as not fixed
+  const disputed = requests.filter(
+    (r) => r.tenantConfirmation?.verdict === "not_done",
   ).length;
 
   const items = [
@@ -247,6 +298,13 @@ const StatsBar = ({ requests }) => {
       color: "text-violet-600",
       bg: "bg-violet-50",
       show: proof > 0,
+    },
+    {
+      label: "Disputed",
+      value: disputed,
+      color: "text-orange-600",
+      bg: "bg-orange-50",
+      show: disputed > 0,
     },
     {
       label: "Emergency",
@@ -350,7 +408,6 @@ const AssignTechnicianModal = ({ request, onClose, onSuccess, showAlert }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-50 sticky top-0 bg-white z-10">
           <div>
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
@@ -369,7 +426,6 @@ const AssignTechnicianModal = ({ request, onClose, onSuccess, showAlert }) => {
         </div>
 
         <div className="px-5 py-4 space-y-4">
-          {/* Name */}
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
               Technician Name <span className="text-red-400">*</span>
@@ -381,8 +437,6 @@ const AssignTechnicianModal = ({ request, onClose, onSuccess, showAlert }) => {
               className="mt-1.5 w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-indigo-400 focus:bg-white transition-colors placeholder:text-gray-300"
             />
           </div>
-
-          {/* Phone */}
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
               Phone Number
@@ -394,8 +448,6 @@ const AssignTechnicianModal = ({ request, onClose, onSuccess, showAlert }) => {
               className="mt-1.5 w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-indigo-400 focus:bg-white transition-colors placeholder:text-gray-300"
             />
           </div>
-
-          {/* Payment method */}
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
               Payment Method <span className="text-red-400">*</span>
@@ -405,11 +457,7 @@ const AssignTechnicianModal = ({ request, onClose, onSuccess, showAlert }) => {
                 <button
                   key={opt.value}
                   onClick={() => setPaymentMethod(opt.value)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition-all ${
-                    paymentMethod === opt.value
-                      ? "bg-indigo-600 border-indigo-600 text-white"
-                      : "bg-gray-50 border-gray-100 hover:bg-gray-100"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition-all ${paymentMethod === opt.value ? "bg-indigo-600 border-indigo-600 text-white" : "bg-gray-50 border-gray-100 hover:bg-gray-100"}`}
                 >
                   <span className="text-lg shrink-0">{opt.icon}</span>
                   <div className="flex-1">
@@ -431,8 +479,6 @@ const AssignTechnicianModal = ({ request, onClose, onSuccess, showAlert }) => {
               ))}
             </div>
           </div>
-
-          {/* Amount + note — shown once a method is picked */}
           {paymentMethod && (
             <div className="space-y-3">
               <div>
@@ -461,8 +507,6 @@ const AssignTechnicianModal = ({ request, onClose, onSuccess, showAlert }) => {
               </div>
             </div>
           )}
-
-          {/* Actions */}
           <div className="flex gap-2 pt-1">
             <button
               onClick={onClose}
@@ -959,6 +1003,7 @@ const OwnerRequestCard = ({ request, onRefresh, showAlert }) => {
 
   const isEmergency = request.isEmergency || request.priority === "emergency";
   const hasProof = request.status === "awaiting_proof_review" && request.proof;
+  const tenantDisputed = request.tenantConfirmation?.verdict === "not_done";
   const categoryEmoji = CATEGORY_ICONS[request.category] || "🔩";
 
   return (
@@ -967,9 +1012,11 @@ const OwnerRequestCard = ({ request, onRefresh, showAlert }) => {
         className={`bg-white rounded-3xl overflow-hidden border transition-all duration-200 ${
           isEmergency
             ? "border-red-200 shadow-md shadow-red-50"
-            : hasProof
-              ? "border-violet-200 shadow-md shadow-violet-50"
-              : "border-gray-100 shadow-sm"
+            : tenantDisputed
+              ? "border-orange-200 shadow-md shadow-orange-50"
+              : hasProof
+                ? "border-violet-200 shadow-md shadow-violet-50"
+                : "border-gray-100 shadow-sm"
         }`}
       >
         {isEmergency && (
@@ -981,7 +1028,25 @@ const OwnerRequestCard = ({ request, onRefresh, showAlert }) => {
           </div>
         )}
 
-        {hasProof && !isEmergency && (
+        {/* Tenant dispute banner */}
+        {tenantDisputed && !isEmergency && (
+          <div className="bg-orange-500 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FaThumbsDown className="text-white/80" size={11} />
+              <span className="text-white text-xs font-bold">
+                Tenant says issue is not fixed
+              </span>
+            </div>
+            <button
+              onClick={() => setExpanded(true)}
+              className="text-[10px] font-bold bg-white/20 text-white px-2 py-1 rounded-lg hover:bg-white/30 transition-colors"
+            >
+              View
+            </button>
+          </div>
+        )}
+
+        {hasProof && !isEmergency && !tenantDisputed && (
           <div className="bg-violet-600 px-4 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FaReceipt className="text-white/80" size={11} />
@@ -1103,6 +1168,7 @@ const OwnerRequestCard = ({ request, onRefresh, showAlert }) => {
             </button>
           )}
         </div>
+
         {request.assignedTo?.name && (
           <div className="mx-4 mb-4 bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3 space-y-2">
             <div className="flex items-center justify-between">
@@ -1126,13 +1192,11 @@ const OwnerRequestCard = ({ request, onRefresh, showAlert }) => {
                 Change
               </button>
             </div>
-
             {request.assignedTo.phone && (
               <p className="text-xs text-indigo-600 pl-10">
                 📞 {request.assignedTo.phone}
               </p>
             )}
-
             {request.assignedTo.payment?.method && (
               <div className="pl-10 space-y-0.5">
                 <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
@@ -1170,6 +1234,11 @@ const OwnerRequestCard = ({ request, onRefresh, showAlert }) => {
 
         {expanded && (
           <div className="px-4 pb-5 space-y-4">
+            {/* ── TENANT CONFIRMATION BADGE ── */}
+            <TenantConfirmationBadge
+              confirmation={request.tenantConfirmation}
+            />
+
             {request.tenantHiredTechnician?.name && (
               <div className="bg-teal-50 border border-teal-100 rounded-2xl px-4 py-3 space-y-1">
                 <p className="text-[10px] font-bold text-teal-500 uppercase tracking-wider">
@@ -1191,13 +1260,7 @@ const OwnerRequestCard = ({ request, onRefresh, showAlert }) => {
 
             {request.proof && (
               <div
-                className={`rounded-2xl border px-4 py-3 space-y-2 ${
-                  request.proof.status === "approved"
-                    ? "bg-emerald-50 border-emerald-100"
-                    : request.proof.status === "rejected"
-                      ? "bg-red-50 border-red-100"
-                      : "bg-violet-50 border-violet-100"
-                }`}
+                className={`rounded-2xl border px-4 py-3 space-y-2 ${request.proof.status === "approved" ? "bg-emerald-50 border-emerald-100" : request.proof.status === "rejected" ? "bg-red-50 border-red-100" : "bg-violet-50 border-violet-100"}`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1216,13 +1279,7 @@ const OwnerRequestCard = ({ request, onRefresh, showAlert }) => {
                     </p>
                   </div>
                   <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
-                      request.proof.status === "approved"
-                        ? "bg-emerald-200 text-emerald-800"
-                        : request.proof.status === "rejected"
-                          ? "bg-red-200 text-red-700"
-                          : "bg-violet-200 text-violet-800"
-                    }`}
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${request.proof.status === "approved" ? "bg-emerald-200 text-emerald-800" : request.proof.status === "rejected" ? "bg-red-200 text-red-700" : "bg-violet-200 text-violet-800"}`}
                   >
                     {request.proof.status}
                   </span>
@@ -1256,15 +1313,7 @@ const OwnerRequestCard = ({ request, onRefresh, showAlert }) => {
                     Tenant Helper
                   </p>
                   <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                      request.tenantHelper.status === "completed"
-                        ? "bg-blue-100 text-blue-700"
-                        : request.tenantHelper.status === "accepted"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : request.tenantHelper.status === "declined"
-                            ? "bg-red-100 text-red-600"
-                            : "bg-amber-100 text-amber-700"
-                    }`}
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${request.tenantHelper.status === "completed" ? "bg-blue-100 text-blue-700" : request.tenantHelper.status === "accepted" ? "bg-emerald-100 text-emerald-700" : request.tenantHelper.status === "declined" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}
                   >
                     {request.tenantHelper.status.toUpperCase()}
                   </span>
@@ -1374,7 +1423,7 @@ const OwnerMaintenanceDashboard = () => {
       if (!silent) setLoading(true);
       else setRefreshing(true);
       try {
-        const params = { view: "owner" }; // ← always force owner view
+        const params = { view: "owner" };
         if (propertyId) params.propertyId = propertyId;
 
         const res = await axios.get(API_ROUTES.MAINTENANCE.OWNER_REQUESTS, {
@@ -1414,7 +1463,8 @@ const OwnerMaintenanceDashboard = () => {
       ["open", "in_review", "awaiting_proof_review", "reopened"].includes(
         r.status,
       ) ||
-      (r.isEmergency && !["resolved", "closed"].includes(r.status)),
+      (r.isEmergency && !["resolved", "closed"].includes(r.status)) ||
+      r.tenantConfirmation?.verdict === "not_done", // ← disputed requests need attention too
   );
   const inProgressItems = requests.filter((r) =>
     ["scheduled", "in_progress", "tenant_handling"].includes(r.status),
@@ -1446,6 +1496,9 @@ const OwnerMaintenanceDashboard = () => {
   const emergencyCount = requests.filter(
     (r) => r.isEmergency || r.priority === "emergency",
   ).length;
+  const disputedCount = requests.filter(
+    (r) => r.tenantConfirmation?.verdict === "not_done",
+  ).length;
 
   const TABS = [
     {
@@ -1471,7 +1524,6 @@ const OwnerMaintenanceDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 font-sans">
-      {/* ── Sticky Header ── */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-2xl mx-auto px-4 pt-4 pb-3 flex items-center gap-3">
           <button
@@ -1481,11 +1533,16 @@ const OwnerMaintenanceDashboard = () => {
             <FaArrowLeft className="text-gray-600" size={13} />
           </button>
           <div className="flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-black text-gray-900">Maintenance</h1>
               {proofCount > 0 && (
                 <span className="px-2 py-0.5 bg-violet-100 text-violet-700 text-[10px] font-black rounded-full">
                   {proofCount} receipt{proofCount > 1 ? "s" : ""} pending
+                </span>
+              )}
+              {disputedCount > 0 && (
+                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-black rounded-full">
+                  {disputedCount} disputed
                 </span>
               )}
             </div>
@@ -1523,7 +1580,6 @@ const OwnerMaintenanceDashboard = () => {
           >
             <FaSort className="text-gray-400" size={13} />
           </button>
-
           <button
             onClick={() => fetchRequests(true)}
             disabled={refreshing}
@@ -1547,13 +1603,7 @@ const OwnerMaintenanceDashboard = () => {
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-bold transition-all active:scale-95 border ${
-                  activeTab === key
-                    ? urgent
-                      ? "bg-red-500 text-white border-transparent"
-                      : "bg-gray-900 text-white border-transparent"
-                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
-                }`}
+                className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-bold transition-all active:scale-95 border ${activeTab === key ? (urgent ? "bg-red-500 text-white border-transparent" : "bg-gray-900 text-white border-transparent") : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}
               >
                 {label}
                 {count > 0 && (

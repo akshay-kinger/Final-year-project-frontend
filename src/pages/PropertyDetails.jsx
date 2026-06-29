@@ -211,6 +211,7 @@ const PropertyDetails = () => {
     propertyId: property._id,
     propertyTitle: property.title,
     rent: property.rent,
+    deposit: property.deposit,      // ← added
     checkInDate: property.availableFrom,
     checkOutDate: property.availableTo,
     postedById: property.postedBy?._id || property.postedBy,
@@ -685,43 +686,27 @@ const PropertyDetails = () => {
                   <div className="w-full py-4 bg-gray-100 text-gray-400 rounded-xl font-bold text-base text-center cursor-not-allowed border border-gray-200">
                     You own this property
                   </div>
-                ) : roommateEnabled ? (
-                  // ── ROOMMATE APPLICATION ──────────────────────────────────
-                  // FIX: passes isRoommateRequest: true so Booking.jsx renders
-                  // the roommate-specific form and the backend enforces gender gate.
+                ) : (
                   <button
                     onClick={() =>
                       navigate("/booking/" + property._id, {
                         state: {
                           ...baseBookingState,
-                          isRoommateRequest: true,
+                          isRoommateRequest:
+                            isRoom && roommateEnabled && isSharing,
                         },
                       })
                     }
-                    disabled={spotsLeft === 0}
-                    className={`w-full py-4 rounded-xl font-bold text-base transition-all transform active:scale-95 flex items-center justify-center gap-2 ${
-                      spotsLeft === 0
-                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    disabled={isRoom && isSharing && spotsLeft === 0}
+                    className={`w-full py-4 rounded-xl font-bold text-base transition-all transform active:scale-95 ${
+                      isRoom && isSharing && spotsLeft === 0
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
                         : "bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary-dark"
                     }`}
                   >
-                    <FaUsers size={16} />
-                    {spotsLeft === 0 ? "Room Full" : "Apply as Roommate"}
-                  </button>
-                ) : (
-                  // ── STANDARD BOOKING ──────────────────────────────────────
-                  <button
-                    onClick={() =>
-                      navigate("/booking/" + property._id, {
-                        state: {
-                          ...baseBookingState,
-                          isRoommateRequest: false,
-                        },
-                      })
-                    }
-                    className="w-full py-4 bg-primary text-white rounded-xl font-bold text-base shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all transform active:scale-95"
-                  >
-                    Book Now
+                    {isRoom && isSharing && spotsLeft === 0
+                      ? "Room Full"
+                      : "Book Now"}
                   </button>
                 )}
 

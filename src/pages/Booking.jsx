@@ -12,6 +12,7 @@ import {
   FaFileContract,
   FaExclamationTriangle,
   FaArrowRight,
+  FaShieldAlt,
 } from "react-icons/fa";
 import { useAlert } from "../context/AlertContext";
 import { API_ROUTES } from "../api/apiRoutes";
@@ -119,6 +120,7 @@ const Booking = () => {
     propertyId,
     propertyTitle,
     rent,
+    deposit,         // ← now received from PropertyDetails
     checkInDate,
     checkOutDate,
     postedById,
@@ -128,10 +130,7 @@ const Booking = () => {
   const [loading, setLoading] = useState(false);
   const [requested, setRequested] = useState(false);
   const [message, setMessage] = useState("");
-
-  // FIX: Track duplicate booking state so we can render an informative screen
-  // instead of just an error toast.
-  const [duplicateState, setDuplicateState] = useState(null); // { status, bookingId }
+  const [duplicateState, setDuplicateState] = useState(null);
 
   // ── Guard: no property in state ───────────────────────────────────────────
   useEffect(() => {
@@ -150,17 +149,13 @@ const Booking = () => {
     }
   }, [postedById, navigate, showAlert]);
 
-  /* ── COST CALCULATION ──────────────────────────────────────────────────── */
-  const calcDays = () => {
-    if (!checkInDate || !checkOutDate) return 1;
-    const diff = new Date(checkOutDate) - new Date(checkInDate);
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-    return days > 0 ? days : 1;
-  };
-
-  const days = calcDays();
-  const dailyRate = rent / 30;
-  const totalAmount = Math.round(dailyRate * days);
+  /* ── COST CALCULATION ──────────────────────────────────────────────────────
+     Only charge: 1 month rent + security deposit.
+     Do NOT multiply by duration days.
+  ── */
+  const monthlyRent   = Number(rent)    || 0;
+  const securityDeposit = Number(deposit) || 0;
+  const totalAmount   = monthlyRent + securityDeposit;
 
   /* ── SUBMIT ────────────────────────────────────────────────────────────── */
   const handleRequestBooking = async () => {
@@ -171,7 +166,6 @@ const Booking = () => {
         checkInDate,
         checkOutDate,
         totalAmount,
-        days,
         isRoommateRequest,
         ...(isRoommateRequest && { message: message.trim() }),
       };
@@ -190,8 +184,6 @@ const Booking = () => {
         );
       }
     } catch (err) {
-      // FIX: 409 = duplicate active booking — render an informative screen
-      // instead of a generic error toast.
       if (err.response?.status === 409) {
         setDuplicateState({
           status: err.response.data.existingStatus || "pending",
@@ -361,38 +353,52 @@ const Booking = () => {
 
             <hr className="border-gray-100" />
 
-            {/* Price breakdown */}
+            {/* ── Price breakdown ── */}
             <div className="space-y-3">
               <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wider">
-                Price Breakdown
+                Payment Breakdown
               </h3>
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>
+
+              {/* Monthly rent row */}
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-500">
                   Monthly Rent{isRoommateRequest ? " (per person)" : ""}
                 </span>
-                <span>₨ {rent?.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-sm text-gray-600 italic">
-                <span>Daily Rate (Rent ÷ 30)</span>
-                <span>₨ {Math.round(dailyRate).toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-sm text-gray-900 font-medium">
-                <span>
-                  Subtotal (₨ {Math.round(dailyRate).toLocaleString()} × {days}{" "}
-                  days)
+                <span className="font-semibold text-gray-800">
+                  ₨ {monthlyRent.toLocaleString()}
                 </span>
-                <span>₨ {totalAmount?.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-sm text-gray-600">
+
+              {/* Security deposit row */}
+              <div className="flex justify-between items-center text-sm">
+                <span className="flex items-center gap-1.5 text-gray-500">
+                  <FaShieldAlt size={11} className="text-gray-400" />
+                  Security Deposit
+                </span>
+                <span className="font-semibold text-gray-800">
+                  {securityDeposit > 0
+                    ? `₨ ${securityDeposit.toLocaleString()}`
+                    : <span className="text-emerald-500 font-bold">None</span>}
+                </span>
+              </div>
+
+              {/* Service fee */}
+              <div className="flex justify-between text-sm text-gray-500">
                 <span>Service fee</span>
                 <span className="font-semibold text-emerald-500">Free</span>
               </div>
+
               <hr className="border-dashed border-gray-200" />
-              <div className="flex justify-between font-black text-gray-900 bg-gray-50 p-3 rounded-xl border border-gray-100">
-                <span>Total Amount</span>
-                <span className="text-xl">
-                  ₨ {totalAmount?.toLocaleString()}
-                </span>
+
+              {/* Total */}
+              <div className="flex justify-between items-center font-black text-gray-900 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <div>
+                  <span className="text-base">Total Pay Now</span>
+                  <p className="text-xs font-medium text-gray-400 mt-0.5">
+                    1st month + security deposit
+                  </p>
+                </div>
+                <span className="text-xl">₨ {totalAmount.toLocaleString()}</span>
               </div>
             </div>
           </div>

@@ -105,6 +105,7 @@ export const API_ROUTES = {
     RESPOND_HELPER: (id) => `${BASE_URL}/maintenance/${id}/respond-helper`,
     COMPLETE_HELPER: (id) => `${BASE_URL}/maintenance/${id}/complete-helper`,
 
+    CONFIRM_WORK: (id) => `${BASE_URL}/maintenance/${id}/confirm-work`,
     // Owner
     ALL: `${BASE_URL}/maintenance`,
     ASSIGN: (id) => `${BASE_URL}/maintenance/${id}/assign`,

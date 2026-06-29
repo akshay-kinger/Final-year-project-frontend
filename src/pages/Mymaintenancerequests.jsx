@@ -19,6 +19,8 @@ import {
   FaCalendarAlt,
   FaUpload,
   FaReceipt,
+  FaThumbsUp,
+  FaThumbsDown,
 } from "react-icons/fa";
 import { useAlert } from "../context/AlertContext";
 import { API_ROUTES } from "../api/apiRoutes";
@@ -208,6 +210,17 @@ const HISTORY_ACTION_CONFIG = {
     color: "text-emerald-600",
     bg: "bg-emerald-100",
   },
+  // ── NEW ──
+  tenant_confirmed_done: {
+    label: "You Confirmed Fixed",
+    color: "text-emerald-600",
+    bg: "bg-emerald-100",
+  },
+  tenant_reopened: {
+    label: "You Reported Not Fixed",
+    color: "text-orange-600",
+    bg: "bg-orange-100",
+  },
 };
 
 const fmt = (d) =>
@@ -379,7 +392,7 @@ const CreateRequestModal = ({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe the issue in detail — when it started, how severe it is..."
+              placeholder="Describe the issue in detail..."
               rows={3}
               className="mt-1.5 w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400 focus:bg-white transition-colors resize-none placeholder:text-gray-300"
             />
@@ -517,14 +530,18 @@ const HistoryTimeline = ({ history }) => {
                     ? "✦"
                     : entry.action === "comment_added"
                       ? "💬"
-                      : entry.action === "resolved" ||
-                          entry.action === "proof_approved" ||
-                          entry.action === "helper_completed"
+                      : entry.action === "tenant_confirmed_done"
                         ? "✓"
-                        : entry.action.includes("rejected") ||
-                            entry.action.includes("declined")
-                          ? "✕"
-                          : "↻"}
+                        : entry.action === "tenant_reopened"
+                          ? "↩"
+                          : entry.action === "resolved" ||
+                              entry.action === "proof_approved" ||
+                              entry.action === "helper_completed"
+                            ? "✓"
+                            : entry.action.includes("rejected") ||
+                                entry.action.includes("declined")
+                              ? "✕"
+                              : "↻"}
                 </span>
               </div>
               {!isLast && <div className="w-px flex-1 bg-gray-100 my-1" />}
@@ -549,6 +566,174 @@ const HistoryTimeline = ({ history }) => {
           </div>
         );
       })}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────
+// TenantWorkConfirmation  ← NEW COMPONENT
+//
+// Shows when the owner has assigned a technician (scheduled / in_progress /
+// resolved) and the tenant hasn't confirmed yet. Tenant picks "Yes, it's fixed"
+// or "No, still broken". Once submitted, shows the recorded verdict.
+// ─────────────────────────────────────────────
+const TenantWorkConfirmation = ({ request, onRefresh, showAlert }) => {
+  const [loading, setLoading] = useState(false);
+  const [note, setNote] = useState("");
+  const [showNoteFor, setShowNoteFor] = useState(null); // "done" | "not_done" | null
+
+  const confirmableStatuses = [
+    "scheduled",
+    "in_progress",
+    "resolved",
+    "in_review",
+  ];
+  const alreadyConfirmed = !!request.tenantConfirmation?.verdict;
+  const canConfirm =
+    confirmableStatuses.includes(request.status) && request.assignedTo?.name;
+
+  const handleConfirm = async (verdict) => {
+    setLoading(true);
+    try {
+      await axios.post(
+        API_ROUTES.MAINTENANCE.CONFIRM_WORK(request._id),
+        { verdict, note },
+        {
+          headers: { authorization: `Bearer ${localStorage.getItem("token")}` },
+        },
+      );
+      showAlert(
+        verdict === "done"
+          ? "Great! Marked as resolved."
+          : "Reported as not fixed. Owner has been notified.",
+        "success",
+      );
+      setShowNoteFor(null);
+      setNote("");
+      onRefresh();
+    } catch (err) {
+      showAlert(err.response?.data?.message || "Failed to submit.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Already confirmed — show badge only ──
+  if (alreadyConfirmed) {
+    const isDone = request.tenantConfirmation.verdict === "done";
+    return (
+      <div
+        className={`rounded-2xl border px-4 py-3 flex items-start gap-3 ${isDone ? "bg-emerald-50 border-emerald-100" : "bg-orange-50 border-orange-100"}`}
+      >
+        <div
+          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isDone ? "bg-emerald-100" : "bg-orange-100"}`}
+        >
+          {isDone ? (
+            <FaThumbsUp className="text-emerald-600" size={13} />
+          ) : (
+            <FaThumbsDown className="text-orange-500" size={13} />
+          )}
+        </div>
+        <div>
+          <p
+            className={`text-xs font-black ${isDone ? "text-emerald-700" : "text-orange-700"}`}
+          >
+            {isDone
+              ? "You confirmed this is fixed"
+              : "You reported this is not fixed"}
+          </p>
+          {request.tenantConfirmation.note && (
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              {request.tenantConfirmation.note}
+            </p>
+          )}
+          <p className="text-[10px] text-gray-400 mt-1">
+            {fmtTime(request.tenantConfirmation.confirmedAt)}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canConfirm) return null;
+
+  // ── Note input step ──
+  if (showNoteFor) {
+    const isDone = showNoteFor === "done";
+    return (
+      <div
+        className={`rounded-2xl border p-4 space-y-3 ${isDone ? "bg-emerald-50 border-emerald-100" : "bg-orange-50 border-orange-100"}`}
+      >
+        <div className="flex items-center justify-between">
+          <p
+            className={`text-sm font-black ${isDone ? "text-emerald-700" : "text-orange-700"}`}
+          >
+            {isDone ? "Confirm work is done?" : "Report issue not fixed?"}
+          </p>
+          <button
+            onClick={() => {
+              setShowNoteFor(null);
+              setNote("");
+            }}
+            className="text-[10px] text-gray-400 font-semibold"
+          >
+            Cancel
+          </button>
+        </div>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={
+            isDone
+              ? "Any comments about the work done... (optional)"
+              : "Describe what's still wrong... (optional)"
+          }
+          rows={2}
+          className="w-full text-sm bg-white border border-gray-200 rounded-xl px-3 py-2.5 resize-none outline-none focus:border-gray-400 placeholder:text-gray-300"
+        />
+        <button
+          onClick={() => handleConfirm(showNoteFor)}
+          disabled={loading}
+          className={`w-full py-3 text-white rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2 ${isDone ? "bg-emerald-600 hover:bg-emerald-700" : "bg-orange-500 hover:bg-orange-600"}`}
+        >
+          {loading ? (
+            <FaSpinner className="animate-spin" size={13} />
+          ) : isDone ? (
+            <FaThumbsUp size={13} />
+          ) : (
+            <FaThumbsDown size={13} />
+          )}
+          {isDone ? "Yes, it's fixed" : "No, still broken"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Default: prompt the tenant ──
+  return (
+    <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-3">
+      <div>
+        <p className="text-sm font-black text-indigo-800">
+          Was the work completed?
+        </p>
+        <p className="text-xs text-indigo-500 mt-0.5">
+          Let us know if the technician fixed the issue.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setShowNoteFor("done")}
+          className="flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm hover:bg-emerald-600 transition-all active:scale-95"
+        >
+          <FaThumbsUp size={12} /> Yes, fixed!
+        </button>
+        <button
+          onClick={() => setShowNoteFor("not_done")}
+          className="flex items-center justify-center gap-2 py-3 bg-white border-2 border-orange-300 text-orange-600 rounded-2xl font-bold text-sm hover:bg-orange-50 transition-all active:scale-95"
+        >
+          <FaThumbsDown size={12} /> Still broken
+        </button>
+      </div>
     </div>
   );
 };
@@ -801,9 +986,17 @@ const RequestCard = ({ request, onRefresh, showAlert }) => {
   const categoryEmoji = CATEGORY_ICONS[request.category] || "🔩";
   const isEmergency = request.isEmergency || request.priority === "emergency";
 
+  // Show the confirmation prompt banner on the card header if relevant
+  const needsConfirmation =
+    ["scheduled", "in_progress", "resolved", "in_review"].includes(
+      request.status,
+    ) &&
+    request.assignedTo?.name &&
+    !request.tenantConfirmation?.verdict;
+
   return (
     <div
-      className={`bg-white rounded-3xl overflow-hidden border transition-all duration-200 ${isEmergency ? "border-red-200 shadow-md shadow-red-50" : "border-gray-100 shadow-sm"}`}
+      className={`bg-white rounded-3xl overflow-hidden border transition-all duration-200 ${isEmergency ? "border-red-200 shadow-md shadow-red-50" : needsConfirmation ? "border-indigo-200 shadow-md shadow-indigo-50" : "border-gray-100 shadow-sm"}`}
     >
       {isEmergency && (
         <div className="bg-red-500 px-5 py-1.5 flex items-center gap-2">
@@ -811,6 +1004,21 @@ const RequestCard = ({ request, onRefresh, showAlert }) => {
           <span className="text-white text-xs font-bold tracking-wide">
             Emergency Request
           </span>
+        </div>
+      )}
+
+      {/* Banner nudging tenant to confirm — only if not already confirmed */}
+      {needsConfirmation && !isEmergency && (
+        <div className="bg-indigo-600 px-5 py-2 flex items-center justify-between">
+          <p className="text-white text-xs font-bold">
+            Did the technician fix the issue?
+          </p>
+          <button
+            onClick={() => setExpanded(true)}
+            className="text-[10px] font-bold bg-white/20 text-white px-2 py-1 rounded-lg hover:bg-white/30 transition-colors"
+          >
+            Confirm
+          </button>
         </div>
       )}
 
@@ -870,7 +1078,7 @@ const RequestCard = ({ request, onRefresh, showAlert }) => {
 
       {expanded && (
         <div className="px-4 pb-5 space-y-4">
-          {request.assignedTo && (
+          {request.assignedTo?.name && (
             <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3">
               <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
                 <FaUser className="text-indigo-500" size={12} />
@@ -880,13 +1088,23 @@ const RequestCard = ({ request, onRefresh, showAlert }) => {
                   Assigned Technician
                 </p>
                 <p className="text-sm font-bold text-indigo-800">
-                  {request.assignedTo?.name ||
-                    request.assignedTo?.email ||
-                    "Staff member"}
+                  {request.assignedTo.name}
                 </p>
+                {request.assignedTo.phone && (
+                  <p className="text-xs text-indigo-600">
+                    📞 {request.assignedTo.phone}
+                  </p>
+                )}
               </div>
             </div>
           )}
+
+          {/* ── WORK CONFIRMATION PANEL ── */}
+          <TenantWorkConfirmation
+            request={request}
+            onRefresh={onRefresh}
+            showAlert={showAlert}
+          />
 
           {request.scheduledAt && (
             <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
@@ -947,15 +1165,7 @@ const RequestCard = ({ request, onRefresh, showAlert }) => {
                   Helper Request
                 </p>
                 <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                    request.tenantHelper.status === "accepted"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : request.tenantHelper.status === "declined"
-                        ? "bg-red-100 text-red-600"
-                        : request.tenantHelper.status === "completed"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-amber-100 text-amber-700"
-                  }`}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${request.tenantHelper.status === "accepted" ? "bg-emerald-100 text-emerald-700" : request.tenantHelper.status === "declined" ? "bg-red-100 text-red-600" : request.tenantHelper.status === "completed" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}
                 >
                   {request.tenantHelper.status.toUpperCase()}
                 </span>
@@ -1030,11 +1240,7 @@ const RequestCard = ({ request, onRefresh, showAlert }) => {
 const TabPill = ({ label, count, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`shrink-0 px-4 py-1.5 rounded-xl text-sm font-bold transition-all active:scale-95 border ${
-      active
-        ? "bg-orange-500 text-white border-transparent shadow-sm shadow-orange-200"
-        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
-    }`}
+    className={`shrink-0 px-4 py-1.5 rounded-xl text-sm font-bold transition-all active:scale-95 border ${active ? "bg-orange-500 text-white border-transparent shadow-sm shadow-orange-200" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}
   >
     {label}
     {count > 0 && (
@@ -1097,7 +1303,7 @@ const MyMaintenanceRequests = () => {
       if (!silent) setLoading(true);
       else setRefreshing(true);
       try {
-        const params = { view: "tenant" }; // ← always force tenant view
+        const params = { view: "tenant" };
         if (passedPropertyId) params.propertyId = passedPropertyId;
 
         const res = await axios.get(API_ROUTES.MAINTENANCE.MY_REQUESTS, {
@@ -1159,6 +1365,15 @@ const MyMaintenanceRequests = () => {
     ["resolved", "closed"].includes(r.status),
   ).length;
   const emergencyCount = requests.filter((r) => r.isEmergency).length;
+  // Count requests where tenant still needs to confirm work
+  const awaitingConfirmCount = requests.filter(
+    (r) =>
+      ["scheduled", "in_progress", "resolved", "in_review"].includes(
+        r.status,
+      ) &&
+      r.assignedTo?.name &&
+      !r.tenantConfirmation?.verdict,
+  ).length;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 font-sans">
@@ -1172,9 +1387,17 @@ const MyMaintenanceRequests = () => {
             <FaArrowLeft size={13} />
           </button>
           <div className="flex-1">
-            <h1 className="text-xl font-black text-gray-900 leading-tight">
-              Maintenance
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-black text-gray-900 leading-tight">
+                Maintenance
+              </h1>
+              {awaitingConfirmCount > 0 && (
+                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-full">
+                  {awaitingConfirmCount} need
+                  {awaitingConfirmCount === 1 ? "s" : ""} your input
+                </span>
+              )}
+            </div>
             {!loading && (
               <p className="text-xs text-gray-400 mt-0.5">
                 {requests.length} request{requests.length !== 1 ? "s" : ""}
@@ -1303,7 +1526,6 @@ const MyMaintenanceRequests = () => {
         )}
       </div>
 
-      {/* ── Create Request Modal ── */}
       {showCreateForm && (
         <CreateRequestModal
           onClose={() => setShowCreateForm(false)}

@@ -1,21 +1,3 @@
-/**
- * BookingCard.jsx  — drop this into your MyBookings list
- *
- * Renders the correct CTA for each booking status:
- *
- *   pending   → "Awaiting Owner Approval" (disabled)
- *   approved  → "Sign Agreement" → then "Proceed to Payment" (once both signed)
- *   held      → "Complete Payment" (30-min window open)
- *   confirmed → "Confirmed ✓"
- *   rejected  → "Rejected"
- *   expired   → "Expired"
- *
- * Props:
- *   booking     — booking object from GET /api/bookings/user
- *   agreement   — agreement object (may be null if not yet generated)
- *   onSign      — () => void   open AgreementModal for this booking
- */
-
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -58,7 +40,6 @@ const BookingCard = ({ booking, agreement, onSign }) => {
     status,
     property,
     totalAmount,
-    days,
     checkInDate,
     checkOutDate,
     _id,
@@ -78,10 +59,10 @@ const BookingCard = ({ booking, agreement, onSign }) => {
       state: {
         propertyTitle: property?.title,
         rent: property?.rent,
+        deposit: property?.deposit,   // ← added
         checkInDate,
         checkOutDate,
         totalAmount,
-        days,
       },
     });
   };
@@ -113,9 +94,6 @@ const BookingCard = ({ booking, agreement, onSign }) => {
         <div className="text-right shrink-0">
           <p className="text-lg font-black text-gray-900">
             ₨ {totalAmount?.toLocaleString()}
-          </p>
-          <p className="text-xs text-gray-400">
-            {days} day{days !== 1 ? "s" : ""}
           </p>
         </div>
       </div>

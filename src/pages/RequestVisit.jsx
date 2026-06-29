@@ -12,6 +12,19 @@ import { API_ROUTES } from "../api/apiRoutes";
 import { useAlert } from "../context/AlertContext";
 import { useLoader } from "../context/LoaderContext";
 
+// ================= HELPER: decode JWT payload =================
+const getCurrentUserId = () => {
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) return null;
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    // Adjust the key below to match your JWT payload (id / _id / userId)
+    return payload.id || payload._id || payload.userId || null;
+  } catch {
+    return null;
+  }
+};
+
 const RequestVisit = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -24,14 +37,30 @@ const RequestVisit = () => {
   // ================= FETCH PROPERTY =================
   useEffect(() => {
     const fetchProperty = async () => {
-      showLoader(); // Use global loader
+      showLoader();
       try {
         const res = await axios.get(API_ROUTES.ACCOMMODATIONS.GET_BY_ID(id), {
           headers: {
             authorization: `Bearer ${localStorage.getItem("token")}`,
           },
         });
-        setProperty(res.data.data);
+        const data = res.data.data;
+
+        // ── Owner guard ──────────────────────────────────────────
+        const currentUserId = getCurrentUserId();
+        // Support both populated owner object and plain owner ID string
+        const ownerId = data.owner?._id || data.owner;
+        if (currentUserId && String(currentUserId) === String(ownerId)) {
+          showAlert(
+            "You cannot request a visit to your own property.",
+            "warning",
+          );
+          navigate(-1);
+          return;
+        }
+        // ─────────────────────────────────────────────────────────
+
+        setProperty(data);
       } catch (err) {
         showAlert("Failed to load visit slots", "error");
         navigate(-1);
@@ -69,7 +98,6 @@ const RequestVisit = () => {
       );
 
       showAlert("Visit requested! You can track it in 'My Visits'.", "success");
-      // Redirecting to Homepage or Dashboard is often clearer than a specific sub-page
       navigate("/Homepage");
     } catch (err) {
       showAlert(err.response?.data?.message || "Request failed", "error");
@@ -85,7 +113,7 @@ const RequestVisit = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-2xl mx-auto bg-white rounded-[2.5rem] shadow-xl overflow-hidden border border-gray-100">
-        {/* HEADER SECTION - Matching AddProperty style */}
+        {/* HEADER SECTION */}
         <div className="bg-secondary p-8 text-center relative">
           <button
             onClick={() => navigate(-1)}
